@@ -1,0 +1,17 @@
+# Virtual environment
+venv/
+__pycache__/
+*.pyc
+
+# Logs
+*.log
+
+# IDE
+.idea/
+.vscode/
+
+# OAuth credentials (sensitive)
+client_secrets.json
+token.json
+
+.DS_Store
