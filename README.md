@@ -31,6 +31,10 @@ uv run generate_token.py
 
 This will open your browser for OAuth consent and generate `token.json`.
 
+### Specs
+
+Write your own ICP and propmts in `sepcs/`.
+
 ## Usage
 
 **Run Claude Code:**
