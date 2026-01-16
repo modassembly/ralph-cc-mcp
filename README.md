@@ -33,7 +33,7 @@ This will open your browser for OAuth consent and generate `token.json`.
 
 ### Specs
 
-Write your own ICP and propmts in `sepcs/`.
+Write your own ICP and propmts in `specs/`.
 
 ## Usage
 
