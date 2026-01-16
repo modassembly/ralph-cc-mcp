@@ -16,6 +16,6 @@ Find more ideal DESIGN PARTNER companies in the US.
 
 Score 1-10 each company. Explain why that score. Let me know what information we're missing, if any, that we can only find by speaking directly with them. Cast whether it's worth reaching out to them. Add few notes that I should know about the company, that would be useful when reaching out.
 
-As a final output, update spreadsheet: 1PcKm7i8LSisnZYQRueNuKVkUtuL0hDU_0RyiFnS1QRI.
+As a final output, update spreadsheet: <ID>.
 Write down company, website, LI page, score, why that score, missing information, reach out decision and outreach notes.
 Verify that no information was lost.

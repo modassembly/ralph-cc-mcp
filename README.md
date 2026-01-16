@@ -38,4 +38,4 @@ This will open your browser for OAuth consent and generate `token.json`.
 claude
 ```
 
-Prompt it to follow `scratchpad/companies/prompt.md` or `scratchpad/people/prompt.md`.
+Prompt it to follow `specs/companies/prompt.md` or `specs/people/prompt.md`.
