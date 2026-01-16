@@ -1,32 +1,22 @@
-"""
-Google Sheets MCP Server - Thin wrappers around Google Sheets and Drive APIs.
-
-OAuth Setup:
-1. Go to https://console.cloud.google.com/apis/credentials
-2. Create OAuth 2.0 Client ID (Desktop app type)
-3. Download JSON and save as 'client_secrets.json' in this directory
-4. Run the server - it will prompt you to authorize on first use
-"""
-
 import csv
 import json
 import logging
 import os
 from pathlib import Path
 from typing import Optional
+
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-# Load .env from the server directory
+
 SERVER_DIR = Path(__file__).parent
 load_dotenv(SERVER_DIR / ".env")
 
-# Setup logging to file (stdout reserved for MCP, stderr suppressed by Claude Code)
+
 LOG_FILE = SERVER_DIR / "google-sheets.log"
 logging.basicConfig(
     filename=LOG_FILE,
@@ -35,55 +25,29 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-mcp = FastMCP("google-sheets")
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive.readonly",
 ]
-
-# OAuth file paths
 TOKEN_FILE = SERVER_DIR / "token.json"
 CLIENT_SECRETS_FILE = SERVER_DIR / "client_secrets.json"
+
+
+mcp = FastMCP("google-sheets")
 
 
 def get_credentials():
     """Get Google API credentials using OAuth2 flow."""
     creds = None
 
-    # Check for existing token
     if TOKEN_FILE.exists():
-        try:
-            creds = Credentials.from_authorized_user_file(str(TOKEN_FILE), SCOPES)
-            logger.info("Loaded credentials from token.json")
-        except Exception as e:
-            logger.error(f"Error loading token.json: {e}")
+        creds = Credentials.from_authorized_user_file(str(TOKEN_FILE), SCOPES)
 
-    # If no valid credentials, run OAuth flow
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
-            try:
-                creds.refresh(Request())
-                logger.info("Refreshed expired credentials")
-            except Exception as e:
-                logger.error(f"Error refreshing credentials: {e}")
-                creds = None
+            creds.refresh(Request())
 
-        if not creds:
-            if not CLIENT_SECRETS_FILE.exists():
-                raise FileNotFoundError(
-                    f"OAuth client secrets not found at {CLIENT_SECRETS_FILE}. "
-                    "Please download from Google Cloud Console and save as 'client_secrets.json'"
-                )
-
-            logger.info("Starting OAuth flow...")
-            flow = InstalledAppFlow.from_client_secrets_file(
-                str(CLIENT_SECRETS_FILE), SCOPES
-            )
-            creds = flow.run_local_server(port=0)
-            logger.info("OAuth flow completed successfully")
-
-        # Save credentials for future use
         with open(TOKEN_FILE, "w") as token:
             token.write(creds.to_json())
             logger.info(f"Saved credentials to {TOKEN_FILE}")
@@ -114,21 +78,10 @@ async def spreadsheets_get(
         spreadsheet_id
     """
     logger.info(f"spreadsheets_get request: spreadsheet_id={spreadsheet_id}")
-
-    try:
-        sheets_service = get_sheets_service()
-
-        result = (
-            sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
-        )
-
-        logger.info(f"spreadsheets_get response: {json.dumps(result)}")
-        return result
-
-    except HttpError as e:
-        error_msg = f"Google API error: {e.reason}"
-        logger.error(error_msg)
-        return {"error": error_msg}
+    sheets_service = get_sheets_service()
+    result = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+    logger.info(f"spreadsheets_get response: {json.dumps(result)}")
+    return result
 
 
 async def spreadsheets_values_get(
@@ -147,11 +100,11 @@ async def spreadsheets_values_get(
     logger.info(
         f"spreadsheets_values_get request: spreadsheet_id={spreadsheet_id}, range={range}"
     )
-
-    try:
-        sheets_service = get_sheets_service()
-
-        result = (
+    sheets_service = get_sheets_service()
+    result = (
+        sheets_service.spreadsheets()
+        .values()
+        .get(
             sheets_service.spreadsheets()
             .values()
             .get(
@@ -163,14 +116,9 @@ async def spreadsheets_values_get(
             )
             .execute()
         )
-
-        logger.info(f"spreadsheets_values_get response: {json.dumps(result)}")
-        return result
-
-    except HttpError as e:
-        error_msg = f"Google API error: {e.reason}"
-        logger.error(error_msg)
-        return {"error": error_msg}
+    )
+    logger.info(f"spreadsheets_values_get response: {json.dumps(result)}")
+    return result
 
 
 @mcp.tool()
@@ -200,28 +148,18 @@ async def spreadsheets_batch_update(
     logger.info(
         f"spreadsheets_batch_update request: spreadsheet_id={spreadsheet_id}, requests={requests}"
     )
-
-    try:
-        sheets_service = get_sheets_service()
-
-        body = {"requests": requests}
-
-        result = (
-            sheets_service.spreadsheets()
-            .batchUpdate(
-                spreadsheetId=spreadsheet_id,
-                body=body,
-            )
-            .execute()
+    sheets_service = get_sheets_service()
+    body = {"requests": requests}
+    result = (
+        sheets_service.spreadsheets()
+        .batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body=body,
         )
-
-        logger.info(f"spreadsheets_batch_update response: {json.dumps(result)}")
-        return result
-
-    except HttpError as e:
-        error_msg = f"Google API error: {e.reason}"
-        logger.error(error_msg)
-        return {"error": error_msg}
+        .execute()
+    )
+    logger.info(f"spreadsheets_batch_update response: {json.dumps(result)}")
+    return result
 
 
 async def spreadsheets_values_update(
@@ -242,34 +180,24 @@ async def spreadsheets_values_update(
     logger.info(
         f"spreadsheets_values_update request: spreadsheet_id={spreadsheet_id}, range={range}, values={values}"
     )
-
-    try:
-        sheets_service = get_sheets_service()
-
-        body = {
-            "values": values,
-            "majorDimension": major_dimension,
-        }
-
-        result = (
-            sheets_service.spreadsheets()
-            .values()
-            .update(
-                spreadsheetId=spreadsheet_id,
-                range=range,
-                valueInputOption=value_input_option,
-                body=body,
-            )
-            .execute()
+    sheets_service = get_sheets_service()
+    body = {
+        "values": values,
+        "majorDimension": major_dimension,
+    }
+    result = (
+        sheets_service.spreadsheets()
+        .values()
+        .update(
+            spreadsheetId=spreadsheet_id,
+            range=range,
+            valueInputOption=value_input_option,
+            body=body,
         )
-
-        logger.info(f"spreadsheets_values_update response: {json.dumps(result)}")
-        return result
-
-    except HttpError as e:
-        error_msg = f"Google API error: {e.reason}"
-        logger.error(error_msg)
-        return {"error": error_msg}
+        .execute()
+    )
+    logger.info(f"spreadsheets_values_update response: {json.dumps(result)}")
+    return result
 
 
 async def spreadsheets_values_append(
@@ -292,35 +220,25 @@ async def spreadsheets_values_append(
     logger.info(
         f"spreadsheets_values_append request: spreadsheet_id={spreadsheet_id}, range={range}, values={values}"
     )
-
-    try:
-        sheets_service = get_sheets_service()
-
-        body = {
-            "values": values,
-            "majorDimension": major_dimension,
-        }
-
-        result = (
-            sheets_service.spreadsheets()
-            .values()
-            .append(
-                spreadsheetId=spreadsheet_id,
-                range=range,
-                valueInputOption=value_input_option,
-                insertDataOption=insert_data_option,
-                body=body,
-            )
-            .execute()
+    sheets_service = get_sheets_service()
+    body = {
+        "values": values,
+        "majorDimension": major_dimension,
+    }
+    result = (
+        sheets_service.spreadsheets()
+        .values()
+        .append(
+            spreadsheetId=spreadsheet_id,
+            range=range,
+            valueInputOption=value_input_option,
+            insertDataOption=insert_data_option,
+            body=body,
         )
-
-        logger.info(f"spreadsheets_values_append response: {json.dumps(result)}")
-        return result
-
-    except HttpError as e:
-        error_msg = f"Google API error: {e.reason}"
-        logger.error(error_msg)
-        return {"error": error_msg}
+        .execute()
+    )
+    logger.info(f"spreadsheets_values_append response: {json.dumps(result)}")
+    return result
 
 
 async def spreadsheets_values_clear(
@@ -335,28 +253,19 @@ async def spreadsheets_values_clear(
     logger.info(
         f"spreadsheets_values_clear request: spreadsheet_id={spreadsheet_id}, range={range}"
     )
-
-    try:
-        sheets_service = get_sheets_service()
-
-        result = (
-            sheets_service.spreadsheets()
-            .values()
-            .clear(
-                spreadsheetId=spreadsheet_id,
-                range=range,
-                body={},
-            )
-            .execute()
+    sheets_service = get_sheets_service()
+    result = (
+        sheets_service.spreadsheets()
+        .values()
+        .clear(
+            spreadsheetId=spreadsheet_id,
+            range=range,
+            body={},
         )
-
-        logger.info(f"spreadsheets_values_clear response: {json.dumps(result)}")
-        return result
-
-    except HttpError as e:
-        error_msg = f"Google API error: {e.reason}"
-        logger.error(error_msg)
-        return {"error": error_msg}
+        .execute()
+    )
+    logger.info(f"spreadsheets_values_clear response: {json.dumps(result)}")
+    return result
 
 
 async def spreadsheets_search(
@@ -379,58 +288,48 @@ async def spreadsheets_search(
     logger.info(
         f"spreadsheets_search request: spreadsheet_id={spreadsheet_id}, search_term={search_term}, sheet_name={sheet_name}, column={column}"
     )
-
-    try:
-        sheets_service = get_sheets_service()
-
-        # Read all data from the sheet
-        result = (
-            sheets_service.spreadsheets()
-            .values()
-            .get(
-                spreadsheetId=spreadsheet_id,
-                range=sheet_name,
-                majorDimension="ROWS",
-                valueRenderOption="FORMATTED_VALUE",
-            )
-            .execute()
+    sheets_service = get_sheets_service()
+    result = (
+        sheets_service.spreadsheets()
+        .values()
+        .get(
+            spreadsheetId=spreadsheet_id,
+            range=sheet_name,
+            majorDimension="ROWS",
+            valueRenderOption="FORMATTED_VALUE",
         )
+        .execute()
+    )
+    values = result.get("values", [])
 
-        values = result.get("values", [])
-        matches = []
+    matches = []
+    search = search_term if case_sensitive else search_term.lower()
 
-        search = search_term if case_sensitive else search_term.lower()
+    # Convert column letter to index
+    col_index = None
+    if column is not None:
+        col_index = ord(column.upper()) - ord("A")
 
-        # Convert column letter to index
-        col_index = None
-        if column is not None:
-            col_index = ord(column.upper()) - ord("A")
-
-        for i, row in enumerate(values):
-            if col_index is not None:
-                # Search only in specified column
-                if col_index < len(row):
-                    cell_value = str(row[col_index])
-                    if not case_sensitive:
-                        cell_value = cell_value.lower()
-                    if search in cell_value:
-                        matches.append({"row_number": i + 1, "data": row})
-            else:
-                # Search all columns
-                row_text = " ".join(str(cell) for cell in row)
+    for i, row in enumerate(values):
+        if col_index is not None:
+            # Search only in specified column
+            if col_index < len(row):
+                cell_value = str(row[col_index])
                 if not case_sensitive:
-                    row_text = row_text.lower()
-                if search in row_text:
+                    cell_value = cell_value.lower()
+                if search in cell_value:
                     matches.append({"row_number": i + 1, "data": row})
+        else:
+            # Search all columns
+            row_text = " ".join(str(cell) for cell in row)
+            if not case_sensitive:
+                row_text = row_text.lower()
+            if search in row_text:
+                matches.append({"row_number": i + 1, "data": row})
 
-        response = {"matches": matches, "total_matches": len(matches)}
-        logger.info(f"spreadsheets_search response: {json.dumps(response)}")
-        return response
-
-    except HttpError as e:
-        error_msg = f"Google API error: {e.reason}"
-        logger.error(error_msg)
-        return {"error": error_msg}
+    response = {"matches": matches, "total_matches": len(matches)}
+    logger.info(f"spreadsheets_search response: {json.dumps(response)}")
+    return response
 
 
 @mcp.tool()
@@ -453,68 +352,48 @@ async def upload_csv(
         f"upload_csv request: csv_file_path={csv_file_path}, spreadsheet_id={spreadsheet_id}, sheet_name={sheet_name}"
     )
 
-    try:
-        # Read and parse CSV file
-        if not os.path.exists(csv_file_path):
-            error_msg = f"CSV file not found: {csv_file_path}"
-            logger.error(error_msg)
-            return {"error": error_msg}
-
-        with open(csv_file_path, "r", encoding="utf-8") as f:
-            csv_reader = csv.reader(f)
-            values = list(csv_reader)
-
-        if not values:
-            error_msg = "CSV file is empty"
-            logger.error(error_msg)
-            return {"error": error_msg}
-
-        logger.info(f"Parsed {len(values)} rows from CSV")
-
-        sheets_service = get_sheets_service()
-
-        # Clear the entire sheet first
-        clear_result = (
-            sheets_service.spreadsheets()
-            .values()
-            .clear(
-                spreadsheetId=spreadsheet_id,
-                range=sheet_name,
-                body={},
-            )
-            .execute()
-        )
-        logger.info(f"Cleared sheet: {sheet_name}")
-
-        # Upload CSV data starting at A1
-        body = {
-            "values": values,
-            "majorDimension": "ROWS",
-        }
-
-        result = (
-            sheets_service.spreadsheets()
-            .values()
-            .update(
-                spreadsheetId=spreadsheet_id,
-                range=f"{sheet_name}!A1",
-                valueInputOption=value_input_option,
-                body=body,
-            )
-            .execute()
-        )
-
-        logger.info(f"upload_csv response: {json.dumps(result)}")
-        return result
-
-    except HttpError as e:
-        error_msg = f"Google API error: {e.reason}"
+    # Read and parse CSV file
+    if not os.path.exists(csv_file_path):
+        error_msg = f"CSV file not found: {csv_file_path}"
         logger.error(error_msg)
         return {"error": error_msg}
-    except Exception as e:
-        error_msg = f"Error uploading CSV: {str(e)}"
+
+    with open(csv_file_path, "r", encoding="utf-8") as f:
+        csv_reader = csv.reader(f)
+        values = list(csv_reader)
+
+    if not values:
+        error_msg = "CSV file is empty"
         logger.error(error_msg)
         return {"error": error_msg}
+
+    sheets_service = get_sheets_service()
+
+    # Clear the entire sheet first
+    sheets_service.spreadsheets().values().clear(
+        spreadsheetId=spreadsheet_id,
+        range=sheet_name,
+        body={},
+    ).execute()
+
+    # Upload CSV data starting at A1
+    body = {
+        "values": values,
+        "majorDimension": "ROWS",
+    }
+    result = (
+        sheets_service.spreadsheets()
+        .values()
+        .update(
+            spreadsheetId=spreadsheet_id,
+            range=f"{sheet_name}!A1",
+            valueInputOption=value_input_option,
+            body=body,
+        )
+        .execute()
+    )
+    logger.info(f"upload_csv response: {json.dumps(result)}")
+    return result
 
 
 if __name__ == "__main__":

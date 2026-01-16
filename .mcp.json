@@ -1,12 +1,24 @@
 {
   "mcpServers": {
     "apollo": {
-      "command": "/Users/lgaleana/Code/claude-code/apollo-mcp-server/venv/bin/python3",
-      "args": ["/Users/lgaleana/Code/claude-code/apollo-mcp-server/server.py"]
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "apollo-mcp-server",
+        "python",
+        "server.py"
+      ]
     },
     "google-sheets": {
-      "command": "/Users/lgaleana/Code/claude-code/google-sheets-mcp-server/venv/bin/python3",
-      "args": ["/Users/lgaleana/Code/claude-code/google-sheets-mcp-server/server.py"]
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "google-sheets-mcp-server",
+        "python",
+        "server.py"
+      ]
     }
   }
 }

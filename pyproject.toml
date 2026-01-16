@@ -1,0 +1,8 @@
+[tool.uv.workspace]
+members = ["apollo-mcp-server", "google-sheets-mcp-server"]
+
+[project]
+name = "claude-code"
+version = "0.1.0"
+description = "MCP servers for Apollo and Google Sheets"
+requires-python = ">=3.10"

@@ -1,1 +1,14 @@
+.venv
+uv.lock
+.python-version
+__pycache__/
+*.pyc
 .DS_Store
+.vscode
+.claude
+.env
+client_secrets.json
+token.json
+*.log
+scratchpad/companies/
+scratchpad/people/

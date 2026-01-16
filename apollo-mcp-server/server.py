@@ -1,22 +1,18 @@
-"""
-Apollo.io MCP Server - People and Company search.
-"""
-
-import os
 import json
 import logging
+import os
 from pathlib import Path
-from datetime import datetime
-import httpx
 from typing import Optional
+
+import httpx
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 
-# Load .env from the server directory
+
 SERVER_DIR = Path(__file__).parent
 load_dotenv(SERVER_DIR / ".env")
 
-# Setup logging to file (stdout reserved for MCP, stderr suppressed by Claude Code)
+
 LOG_FILE = SERVER_DIR / "apollo.log"
 logging.basicConfig(
     filename=LOG_FILE,
@@ -25,7 +21,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
 mcp = FastMCP("apollo")
+
 APOLLO_API_BASE = "https://api.apollo.io/api/v1"
 
 
@@ -222,9 +220,130 @@ async def search_people(
 
 
 @mcp.tool()
+async def enrich_person(
+    person_fields: list[str] = [
+        "first_name",
+        "last_name",
+        "title",
+        "email",
+        "organization.name",
+    ],
+    first_name: Optional[str] = None,
+    last_name: Optional[str] = None,
+    name: Optional[str] = None,
+    email: Optional[str] = None,
+    hashed_email: Optional[str] = None,
+    organization_name: Optional[str] = None,
+    domain: Optional[str] = None,
+    id: Optional[str] = None,
+    linkedin_url: Optional[str] = None,
+    reveal_personal_emails: bool = False,
+) -> dict:
+    """
+    Args:
+    person_fields: Fields to include in person object.
+        Defaults to: ["id", "first_name", "last_name", "name", "title", "email", "organization.name"]
+
+        Available top-level: id, first_name, last_name, name, linkedin_url, title, email_status, photo_url, twitter_url, github_url, facebook_url, extrapolated_email_confidence, headline, email, organization_id, state, city, country, contact_id, time_zone, free_domain, is_likely_to_engage, revealed_for_current_team
+
+        Available nested (use "organization.field", "contact.field" syntax): organization.id, organization.name, organization.website_url, organization.linkedin_url, organization.primary_domain, organization.industry, contact.id, contact.name, contact.email
+
+        Note: employment_history, contact_emails, phone_numbers arrays are always included if present
+    first_name: First name (typically used with last_name). Eg: tim
+    last_name: Last name (typically used with first_name). Eg: zheng
+    name: Full name (first and last separated by space). Eg: tim zheng
+    email: Email address. Eg: example@email.com
+    hashed_email: MD5 or SHA-256 hashed email. Eg: 8d935115b9ff4489f2d1f9249503cadf (MD5) or 97817c0c49994eb500ad0a5e7e2d8aed51977b26424d508f66e4e8887746a152 (SHA-256)
+    organization_name: Employer name (current or previous). Eg: apollo
+    domain: Employer domain (no www., @, etc). Eg: apollo.io, microsoft.com
+    id: Apollo person ID. Eg: 587cf802f65125cad923a266
+    linkedin_url: LinkedIn profile URL. Eg: http://www.linkedin.com/in/tim-zheng-677ba010
+    reveal_personal_emails: Enrich with personal emails (consumes credits, respects GDPR). Default: false
+    """
+    api_key = get_api_key()
+
+    # Build query params with only non-None values
+    params = {}
+
+    if first_name is not None:
+        params["first_name"] = first_name
+    if last_name is not None:
+        params["last_name"] = last_name
+    if name is not None:
+        params["name"] = name
+    if email is not None:
+        params["email"] = email
+    if hashed_email is not None:
+        params["hashed_email"] = hashed_email
+    if organization_name is not None:
+        params["organization_name"] = organization_name
+    if domain is not None:
+        params["domain"] = domain
+    if id is not None:
+        params["id"] = id
+    if linkedin_url is not None:
+        params["linkedin_url"] = linkedin_url
+    if reveal_personal_emails:
+        params["reveal_personal_emails"] = "true"
+
+    async with httpx.AsyncClient() as client:
+        logger.info(f"enrich_person request (params): {json.dumps(params)}")
+        logger.info(f"enrich_person request (person_fields): {person_fields}")
+        response = await client.get(
+            f"{APOLLO_API_BASE}/people/match",
+            headers={"Content-Type": "application/json", "X-Api-Key": api_key},
+            params=params,
+            timeout=30.0,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        # Filter person fields to only return requested fields
+        person = data.get("person", {})
+        filtered_person = {}
+
+        # Handle arrays that should always be included if present
+        always_include_arrays = [
+            "employment_history",
+            "contact_emails",
+            "phone_numbers",
+        ]
+
+        for field in person_fields:
+            if "." in field:
+                # Handle nested fields (e.g., "organization.name", "contact.email")
+                parent, child = field.split(".", 1)
+                if parent in person and person[parent] is not None:
+                    if parent not in filtered_person:
+                        filtered_person[parent] = {}
+                    if isinstance(person[parent], dict) and child in person[parent]:
+                        filtered_person[parent][child] = person[parent][child]
+            else:
+                # Handle top-level fields
+                if field in person:
+                    filtered_person[field] = person[field]
+
+        # Always include array fields if present
+        for array_field in always_include_arrays:
+            if array_field in person:
+                filtered_person[array_field] = person[array_field]
+
+        # Also include contact and organization objects if referenced
+        if any(f.startswith("contact.") for f in person_fields):
+            if "contact" in person and "contact" not in filtered_person:
+                filtered_person["contact"] = person["contact"]
+        if any(f.startswith("organization.") for f in person_fields):
+            if "organization" in person and "organization" not in filtered_person:
+                filtered_person["organization"] = person["organization"]
+
+        response = {"person": filtered_person}
+        logger.info(f"enrich_person response: {json.dumps(response)}")
+        return response
+
+
+@mcp.tool()
 async def search_companies(
     organization_fields: list[str] = [
-        "id",
         "name",
         "website_url",
     ],
@@ -256,7 +375,7 @@ async def search_companies(
     """
     Args:
     organization_fields: Fields to include in each organization object.
-        Defaults to: ["id", "name", "website_url"]
+        Defaults to: ["name", "website_url"]
 
         Available: id, name, website_url, blog_url, angellist_url, linkedin_url, twitter_url, facebook_url, primary_phone, languages, alexa_ranking, phone, linkedin_uid, founded_year, publicly_traded_symbol, publicly_traded_exchange, logo_url, crunchbase_url, primary_domain, sanitized_phone, owned_by_organization_id, intent_strength, show_intent, has_intent_signal_account, intent_signal_account, model_ids
     q_organization_domains_list: (eg, ["apollo.io", "microsoft.com"])
